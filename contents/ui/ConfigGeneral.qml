@@ -456,13 +456,6 @@ Action=Popup`
                     Layout.fillWidth: true
                 }
 
-                // Notifications Section
-                QQC2.Label {
-                    text: i18n("Notification Settings")
-                    font.bold: true
-                    Layout.fillWidth: true
-                }
-
                 // Downloads Section
                 // Configuration for download location and behavior
                 QQC2.Label {
