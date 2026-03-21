@@ -66,7 +66,7 @@ Item {
     }
 
     function getUserAgent() {
-        return plasmoid.configuration.url.includes("https://duckduckgo.com") || plasmoid.configuration.url.includes("x.com/i/grok") ? "Mozilla/5.0 (Linux; Android 9; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.111 Mobile Safari/537.36" : "";
+        return plasmoid.configuration.url.includes("https://duckduckgo.com") || plasmoid.configuration.url.includes("x.com/i/grok") ? "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36" : "";
     }
 
     Notification {
