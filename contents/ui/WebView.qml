@@ -46,9 +46,6 @@ Item {
             // Add the PDF as a special type of download
             let pdfIndex = webview.downloads.addDownload(null, `${safeName}-${timestamp}.pdf`, filename, true);
 
-            // Store the PDF index for future reference
-            let currentPdfIndex = pdfIndex;
-
             webview.printToPdf(filename, WebEngineView.A4, WebEngineView.Portrait);
         });
     }
@@ -83,25 +80,6 @@ Item {
         webNotification.text = message;
         webNotification.iconName = icon;
         webNotification.sendEvent();
-    }
-
-    function getProgressPath(path) {
-        // For the progress bar, it needs file:///
-        return "file:///" + path.replace(/^\/+/, '');
-    }
-
-    // Add this helper function before the WebEngineView
-    function isDownloadInProgress(fileName) {
-        if (!webview || !webview.downloads)
-            return false;
-
-        for (let i = 0; i < webview.downloads.count; i++) {
-            let item = webview.downloads.get(i);
-            if (item && item.state === WebEngineDownloadRequest.DownloadInProgress && item.fileName === fileName) {
-                return true;
-            }
-        }
-        return false;
     }
 
     Layout.fillWidth: true
@@ -432,13 +410,6 @@ Item {
             }
         }
 
-        Component.onCompleted: {
-            // Ensure the downloads model is initialized
-            if (!downloads) {
-                downloads = Qt.createQmlObject('import QtQml; ListModel {}', webview);
-            }
-        }
-
         WebEngineProfile {
             id: webProfile
             httpUserAgent: getUserAgent()
@@ -453,11 +424,6 @@ Item {
                 notification.show();
             }
             onDownloadRequested: function (download) {
-                // Ensure downloads model exists
-                if (!webview.downloads) {
-                    webview.downloads = Qt.createQmlObject('import QtQml; ListModel {}', webview);
-                }
-
                 let downloadDirectory = webViewRoot.effectiveDownloadPath;
 
                 if (!plasmoid.configuration.downloadPath) {

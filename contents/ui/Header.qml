@@ -22,8 +22,6 @@ RowLayout {
     // Properties for managing component state
     property var closeWebViewCallback: undefined    // Callback function for closing webview
     property var models                            // Available chat models
-    property bool showCustomURLInput: false        // Toggle between URL selector and custom URL input
-    property var webview: (parent && parent.webviewRoot) ? parent.webviewRoot.webview : null
 
     // Navigation buttons
     PlasmaComponents3.Button {
@@ -219,12 +217,6 @@ RowLayout {
         PlasmaComponents3.ToolTip.text: i18n("Close the webview and release memory")
         PlasmaComponents3.ToolTip.delay: Kirigami.Units.toolTipDelay
         PlasmaComponents3.ToolTip.visible: hovered
-    }
-
-    // Helper Functions
-    // Returns the number of available chat models
-    function getModelsLength() {
-        return urlComboBox.model.length;
     }
 
     // Updates the chat model list and current selection
