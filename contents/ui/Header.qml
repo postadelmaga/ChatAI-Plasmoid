@@ -197,7 +197,7 @@ RowLayout {
         icon.name: "window-pin"
         display: PlasmaComponents3.AbstractButton.IconOnly
         checkable: true
-        checked: Boolean(plasmoid.configuration.keepOpen)
+        checked: Boolean(plasmoid.configuration.pin)
         onToggled: plasmoid.configuration.pin = checked
         visible: !Boolean(plasmoid.configuration.hideKeepOpen)
         z: 3
