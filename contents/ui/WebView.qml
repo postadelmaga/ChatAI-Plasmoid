@@ -16,7 +16,7 @@ Item {
     readonly property string effectiveDownloadPath: {
         if (plasmoid.configuration.downloadPath)
             return plasmoid.configuration.downloadPath.toString().replace(/^file:\/\//, '');
-        return StandardPaths.writableLocation(StandardPaths.DownloadLocation);
+        return StandardPaths.writableLocation(StandardPaths.DownloadLocation).toString().replace(/^file:\/\//, '');
     }
 
     function goBackToHomePage() {
@@ -135,6 +135,95 @@ Item {
         onSaveAsPdfRequested: printPage()
         onSaveAsMHTMLRequested: saveMHTML()
         onCopyLinkRequested: webview.triggerWebAction(WebEngineView.CopyLinkToClipboard)
+    }
+
+    WebEngineProfile {
+        id: webProfile
+        httpUserAgent: getUserAgent()
+        storageName: webViewRoot.effectiveProfileName
+        offTheRecord: false
+        httpCacheType: WebEngineProfile.DiskHttpCache
+        persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
+        persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
+        downloadPath: webViewRoot.effectiveDownloadPath
+        onPresentNotification: function (notification) {
+            showNotification(notification.title, notification.message);
+            notification.show();
+        }
+        onDownloadRequested: function (download) {
+            // Ensure downloads model exists
+            if (!webview.downloads) {
+                webview.downloads = Qt.createQmlObject('import QtQml; ListModel {}', webview);
+            }
+
+            let downloadDirectory = webViewRoot.effectiveDownloadPath;
+
+            if (!plasmoid.configuration.downloadPath) {
+                plasmoid.configuration.downloadPath = downloadDirectory;
+            }
+
+            download.downloadDirectory = downloadDirectory;
+
+            // Check for duplicate downloads
+            for (let i = 0; i < webview.downloads.count; i++) {
+                let currentDownload = webview.downloads.get(i);
+                if (currentDownload.state === WebEngineDownloadRequest.DownloadInProgress && currentDownload.fileName === download.downloadFileName && !currentDownload.isPdfExport) {
+                    showNotification(i18n("Download in progress"), i18n("The file '%1' is already being downloaded", download.downloadFileName), "dialog-warning");
+                    download.cancel();
+                    return;
+                }
+            }
+
+            // Create a unique ID for this download
+            let downloadId = Date.now().toString() + Math.random().toString(36).substring(7);
+
+            let downloadIndex = webview.downloads.addDownload(download, download.downloadFileName, downloadDirectory + "/" + download.downloadFileName, false);
+
+            // Store the index in the download object for reference
+            let currentIndex = downloadIndex;
+
+            // Create independent connections for each download
+            let bytesConnection = function () {
+                if (currentIndex >= 0 && currentIndex < webview.downloads.count) {
+                    let currentProgress = download.receivedBytes / download.totalBytes;
+                    webview.downloads.setProperty(currentIndex, "progress", currentProgress);
+                    webview.downloads.setProperty(currentIndex, "receivedBytes", download.receivedBytes);
+                    webview.downloads.setProperty(currentIndex, "totalBytes", download.totalBytes);
+                }
+            };
+
+            let stateConnection = function (state) {
+                if (currentIndex >= 0 && currentIndex < webview.downloads.count) {
+                    webview.downloads.setProperty(currentIndex, "state", state);
+                    if (state === WebEngineDownloadRequest.DownloadCompleted) {
+                        webview.downloads.setProperty(currentIndex, "progress", 1.0);
+                    }
+                    // Clear connections after completion or cancellation
+                    if (state === WebEngineDownloadRequest.DownloadCompleted || state === WebEngineDownloadRequest.DownloadCancelled) {
+                        download.receivedBytesChanged.disconnect(bytesConnection);
+                        download.stateChanged.disconnect(stateConnection);
+                        delete webview.downloadCache[downloadId];
+                    }
+                }
+            };
+
+            // Connect signals to the updated functions
+            download.receivedBytesChanged.connect(bytesConnection);
+            download.stateChanged.connect(stateConnection);
+
+            // Store all relevant information in the cache
+            webview.downloadCache[downloadId] = {
+                download: download,
+                index: currentIndex,
+                bytesConnection: bytesConnection,
+                stateConnection: stateConnection
+            };
+
+            // Atualizar o modelo com o ID único
+            webview.downloads.setProperty(currentIndex, "downloadId", downloadId);
+
+            download.accept();
+        }
     }
 
     WebEngineView {
@@ -436,95 +525,6 @@ Item {
             // Ensure the downloads model is initialized
             if (!downloads) {
                 downloads = Qt.createQmlObject('import QtQml; ListModel {}', webview);
-            }
-        }
-
-        WebEngineProfile {
-            id: webProfile
-            httpUserAgent: getUserAgent()
-            storageName: webViewRoot.effectiveProfileName
-            offTheRecord: false
-            httpCacheType: WebEngineProfile.DiskHttpCache
-            persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
-            persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
-            downloadPath: webViewRoot.effectiveDownloadPath
-            onPresentNotification: function (notification) {
-                showNotification(notification.title, notification.message);
-                notification.show();
-            }
-            onDownloadRequested: function (download) {
-                // Ensure downloads model exists
-                if (!webview.downloads) {
-                    webview.downloads = Qt.createQmlObject('import QtQml; ListModel {}', webview);
-                }
-
-                let downloadDirectory = webViewRoot.effectiveDownloadPath;
-
-                if (!plasmoid.configuration.downloadPath) {
-                    plasmoid.configuration.downloadPath = downloadDirectory;
-                }
-
-                download.downloadDirectory = downloadDirectory;
-
-                // Check for duplicate downloads
-                for (let i = 0; i < webview.downloads.count; i++) {
-                    let currentDownload = webview.downloads.get(i);
-                    if (currentDownload.state === WebEngineDownloadRequest.DownloadInProgress && currentDownload.fileName === download.downloadFileName && !currentDownload.isPdfExport) {
-                        showNotification(i18n("Download in progress"), i18n("The file '%1' is already being downloaded", download.downloadFileName), "dialog-warning");
-                        download.cancel();
-                        return;
-                    }
-                }
-
-                // Create a unique ID for this download
-                let downloadId = Date.now().toString() + Math.random().toString(36).substring(7);
-
-                let downloadIndex = webview.downloads.addDownload(download, download.downloadFileName, downloadDirectory + "/" + download.downloadFileName, false);
-
-                // Store the index in the download object for reference
-                let currentIndex = downloadIndex;
-
-                // Create independent connections for each download
-                let bytesConnection = function () {
-                    if (currentIndex >= 0 && currentIndex < webview.downloads.count) {
-                        let currentProgress = download.receivedBytes / download.totalBytes;
-                        webview.downloads.setProperty(currentIndex, "progress", currentProgress);
-                        webview.downloads.setProperty(currentIndex, "receivedBytes", download.receivedBytes);
-                        webview.downloads.setProperty(currentIndex, "totalBytes", download.totalBytes);
-                    }
-                };
-
-                let stateConnection = function (state) {
-                    if (currentIndex >= 0 && currentIndex < webview.downloads.count) {
-                        webview.downloads.setProperty(currentIndex, "state", state);
-                        if (state === WebEngineDownloadRequest.DownloadCompleted) {
-                            webview.downloads.setProperty(currentIndex, "progress", 1.0);
-                        }
-                        // Clear connections after completion or cancellation
-                        if (state === WebEngineDownloadRequest.DownloadCompleted || state === WebEngineDownloadRequest.DownloadCancelled) {
-                            download.receivedBytesChanged.disconnect(bytesConnection);
-                            download.stateChanged.disconnect(stateConnection);
-                            delete webview.downloadCache[downloadId];
-                        }
-                    }
-                };
-
-                // Connect signals to the updated functions
-                download.receivedBytesChanged.connect(bytesConnection);
-                download.stateChanged.connect(stateConnection);
-
-                // Store all relevant information in the cache
-                webview.downloadCache[downloadId] = {
-                    download: download,
-                    index: currentIndex,
-                    bytesConnection: bytesConnection,
-                    stateConnection: stateConnection
-                };
-
-                // Atualizar o modelo com o ID único
-                webview.downloads.setProperty(currentIndex, "downloadId", downloadId);
-
-                download.accept();
             }
         }
         // https://doc.qt.io/qt-6/qml-qtwebengine-webenginesettings.html
