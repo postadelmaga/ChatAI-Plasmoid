@@ -141,47 +141,23 @@ PlasmoidItem {
     }
 
     // Widget appearance when expanded (full view)
-    fullRepresentation: ColumnLayout {
+    // Uses Item instead of ColumnLayout so that header hide/show animations do not
+    // change implicitHeight, which would cause Plasma to reset the popup size.
+    fullRepresentation: Item {
         id: mainLayout
 
         // Expose WebView root for other components
         property alias webviewRoot: webviewLoader.item
-        // Update the property to use Types.Location and add the change monitor
         property bool reverseLayout: plasmoid.location === PlasmaCore.Types.TopEdge
-
-        // Function to reorder components
-        function reorderComponents() {
-            let components = reverseLayout ? [webviewLoader, headerMouseArea, headerRoot] : [headerRoot, headerMouseArea, webviewLoader];
-            // Clear and re-add the components in the correct order
-            for (let i = children.length - 1; i >= 0; i--) {
-                children[i].parent = null;
-            }
-            components.forEach(component => {
-                component.parent = mainLayout;
-            });
-            // Update the anchors of headerMouseArea
-            if (headerRoot && headerMouseArea) {
-                if (reverseLayout) {
-                    headerMouseArea.Layout.alignment = Qt.AlignBottom;
-                } else {
-                    headerMouseArea.Layout.alignment = Qt.AlignTop;
-                }
-            }
-        }
 
         // Set minimum dimensions for the expanded view
         Layout.minimumWidth: Kirigami.Units.gridUnit * 28
         Layout.minimumHeight: Kirigami.Units.gridUnit * 39
-        Component.onCompleted: {
-            reorderComponents();
-        }
-        spacing: 0
 
         // Add monitor for plasmoid location change
         Connections {
             function onLocationChanged() {
                 mainLayout.reverseLayout = plasmoid.location === PlasmaCore.Types.TopEdge;
-                reorderComponents();
             }
 
             target: plasmoid
@@ -204,8 +180,13 @@ PlasmoidItem {
             }
 
             models: root.models
-            Layout.fillWidth: true
+            width: parent.width
             z: 2 // Increase the z-index to ensure it is above the MouseArea
+
+            // Anchor to top (normal layout) or bottom (reverse/top-panel layout)
+            anchors.top: mainLayout.reverseLayout ? undefined : parent.top
+            anchors.bottom: mainLayout.reverseLayout ? parent.bottom : undefined
+
             // Callback to close the WebView and collapse the widget
             closeWebViewCallback: function () {
                 webviewLoader.active = false;
@@ -222,21 +203,12 @@ PlasmoidItem {
                     webviewRoot.findBarVisible = !webviewRoot.findBarVisible;
                 }
             }
-            Layout.preferredHeight: shouldBeVisible ? implicitHeight : 0
-            Layout.maximumHeight: Layout.preferredHeight
-            Layout.minimumHeight: 0
-            Layout.bottomMargin: shouldBeVisible ? Kirigami.Units.smallSpacing : 0
-            visible: Layout.preferredHeight > 0
-            opacity: Layout.preferredHeight > 0 ? 1 : 0
+
+            // Animate height directly (not Layout.preferredHeight) so the parent
+            // Item's implicitHeight is unaffected and Plasma won't reset popup size.
+            height: shouldBeVisible ? implicitHeight : 0
+            opacity: shouldBeVisible ? 1 : 0
             clip: true
-            // Adjust the anchors of headerMouseArea based on the panel position
-            Component.onCompleted: {
-                if (mainLayout.reverseLayout) {
-                    headerMouseArea.Layout.alignment = Qt.AlignBottom;
-                } else {
-                    headerMouseArea.Layout.alignment = Qt.AlignTop;
-                }
-            }
 
             // Timer for hiding
             Timer {
@@ -313,7 +285,7 @@ PlasmoidItem {
             }
 
             // Animations
-            Behavior on Layout.preferredHeight {
+            Behavior on height {
                 NumberAnimation {
                     duration: 400
                     easing.type: Easing.InOutCubic
@@ -328,14 +300,20 @@ PlasmoidItem {
             }
         }
 
-        // Mouse detection area
+        // Mouse detection area — thin strip at the panel edge that triggers header reveal
         MouseArea {
             id: headerMouseArea
 
+            width: parent.width
             height: 2
             hoverEnabled: true
             z: 1 // Place below the header
             propagateComposedEvents: true
+
+            // Anchor to same edge as header
+            anchors.top: mainLayout.reverseLayout ? undefined : parent.top
+            anchors.bottom: mainLayout.reverseLayout ? parent.bottom : undefined
+
             onEntered: {
                 headerRoot.headerVisible = true;
                 hideTimer.stop();
@@ -351,12 +329,11 @@ PlasmoidItem {
             onDoubleClicked: event => event.accepted = false
             onPositionChanged: event => event.accepted = false
             onPressAndHold: event => event.accepted = false
-
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignTop
         }
 
         // WebView loader that manages the web content
+        // Fills the entire Item; top/bottom margin tracks the header height so the
+        // webview smoothly gains/loses space as the header animates in/out.
         Loader {
             id: webviewLoader
 
@@ -364,9 +341,9 @@ PlasmoidItem {
             active: root.expanded || item !== null || plasmoid.configuration.loadOnStartup
             asynchronous: true
             source: "WebView.qml"
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.topMargin: 0
+            anchors.fill: parent
+            anchors.topMargin: mainLayout.reverseLayout ? 0 : headerRoot.height
+            anchors.bottomMargin: mainLayout.reverseLayout ? headerRoot.height : 0
 
             // Add status handling
             onStatusChanged: {
